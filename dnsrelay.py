@@ -136,7 +136,7 @@ class UDPDNSRelay(DNSRelay):
                     if addr:
                         self._local_sock.sendto(data, addr)
                         del self._id_to_addr[req_id]
-                    logging.info('response %s', res)
+                    logging.info('--- response %s', res)
             except Exception as e:
                 import traceback
                 traceback.print_exc()
