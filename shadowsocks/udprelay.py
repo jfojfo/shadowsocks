@@ -1,25 +1,19 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
-
-# Copyright (c) 2014 clowwindy
 #
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
+# Copyright 2015 clowwindy
 #
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
+# Licensed under the Apache License, Version 2.0 (the "License"); you may
+# not use this file except in compliance with the License. You may obtain
+# a copy of the License at
 #
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations
+# under the License.
 
 # SOCKS5 UDP Request
 # +----+------+------+----------+----------+----------+
@@ -65,6 +59,8 @@
 # `client`  means UDP clients that connects to other servers
 # `server`  means the UDP server that handles user requests
 
+from __future__ import absolute_import, division, print_function, \
+    with_statement
 
 import time
 import socket
@@ -72,10 +68,9 @@ import logging
 import struct
 import errno
 import random
-import encrypt
-import eventloop
-import lru_cache
-from common import parse_header, pack_addr
+
+from shadowsocks import encrypt, eventloop, lru_cache, common, shell
+from shadowsocks.common import parse_header, pack_addr
 
 
 BUF_SIZE = 65536
@@ -111,6 +106,10 @@ class UDPRelay(object):
         self._closed = False
         self._last_time = time.time()
         self._sockets = set()
+        if 'forbidden_ip' in config:
+            self._forbidden_iplist = config['forbidden_ip']
+        else:
+            self._forbidden_iplist = None
 
         addrs = socket.getaddrinfo(self._listen_addr, self._listen_port, 0,
                                    socket.SOCK_DGRAM, socket.SOL_UDP)
@@ -128,8 +127,9 @@ class UDPRelay(object):
         server_port = self._config['server_port']
         if type(server_port) == list:
             server_port = random.choice(server_port)
+        if type(server) == list:
+            server = random.choice(server)
         logging.debug('chosen server: %s:%d', server, server_port)
-        # TODO support multiple server IP
         return server, server_port
 
     def _close_client(self, client):
@@ -147,7 +147,7 @@ class UDPRelay(object):
         if not data:
             logging.debug('UDP handle_server: data is empty')
         if self._is_local:
-            frag = ord(data[2])
+            frag = common.ord(data[2])
             if frag != 0:
                 logging.warn('drop a message since frag is not 0')
                 return
@@ -177,6 +177,12 @@ class UDPRelay(object):
                                        socket.SOCK_DGRAM, socket.SOL_UDP)
             if addrs:
                 af, socktype, proto, canonname, sa = addrs[0]
+                if self._forbidden_iplist:
+                    if common.to_str(sa[0]) in self._forbidden_iplist:
+                        logging.debug('IP %s is in forbidden list, drop' %
+                                      common.to_str(sa[0]))
+                        # drop
+                        return
                 client = socket.socket(af, socktype, proto)
                 client.setblocking(False)
                 self._cache[key] = client
@@ -202,7 +208,7 @@ class UDPRelay(object):
             if err in (errno.EINPROGRESS, errno.EAGAIN):
                 pass
             else:
-                logging.error(e)
+                shell.print_exception(e)
 
     def _handle_client(self, sock):
         data, r_addr = sock.recvfrom(BUF_SIZE)
@@ -228,7 +234,7 @@ class UDPRelay(object):
             if header_result is None:
                 return
             # addrtype, dest_addr, dest_port, header_length = header_result
-            response = '\x00\x00\x00' + data
+            response = b'\x00\x00\x00' + data
         client_addr = self._client_fd_to_server_addr.get(sock.fileno())
         if client_addr:
             self._server_socket.sendto(response, client_addr)

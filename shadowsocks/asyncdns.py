@@ -1,25 +1,22 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+#
+# Copyright 2014-2015 clowwindy
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may
+# not use this file except in compliance with the License. You may obtain
+# a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations
+# under the License.
 
-# Copyright (c) 2014 clowwindy
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
+from __future__ import absolute_import, division, print_function, \
+    with_statement
 
 import time
 import os
@@ -27,14 +24,13 @@ import socket
 import struct
 import re
 import logging
-import common
-import lru_cache
-import eventloop
+
+from shadowsocks import common, lru_cache, eventloop, shell
 
 
 CACHE_SWEEP_INTERVAL = 30
 
-VALID_HOSTNAME = re.compile("(?!-)[A-Z\d-]{1,63}(?<!-)$", re.IGNORECASE)
+VALID_HOSTNAME = re.compile(br"(?!-)[A-Z\d-]{1,63}(?<!-)$", re.IGNORECASE)
 
 common.patch_socket()
 
@@ -78,24 +74,25 @@ QCLASS_IN = 1
 
 
 def build_address(address):
-    address = address.strip('.')
-    labels = address.split('.')
+    address = address.strip(b'.')
+    labels = address.split(b'.')
     results = []
     for label in labels:
         l = len(label)
         if l > 63:
             return None
-        results.append(chr(l))
+        results.append(common.chr(l))
         results.append(label)
-    results.append('\0')
-    return ''.join(results)
+    results.append(b'\0')
+    return b''.join(results)
 
 
-def build_request(address, qtype, request_id):
-    header = struct.pack('!HBBHHHH', request_id, 1, 0, 1, 0, 0, 0)
+def build_request(address, qtype):
+    request_id = os.urandom(2)
+    header = struct.pack('!BBHHHH', 1, 0, 1, 0, 0, 0)
     addr = build_address(address)
     qtype_qclass = struct.pack('!HH', qtype, QCLASS_IN)
-    return header + addr + qtype_qclass
+    return request_id + header + addr + qtype_qclass
 
 
 def parse_ip(addrtype, data, length, offset):
@@ -112,7 +109,7 @@ def parse_ip(addrtype, data, length, offset):
 def parse_name(data, offset):
     p = offset
     labels = []
-    l = ord(data[p])
+    l = common.ord(data[p])
     while l > 0:
         if (l & (128 + 64)) == (128 + 64):
             # pointer
@@ -122,12 +119,12 @@ def parse_name(data, offset):
             labels.append(r[1])
             p += 2
             # pointer is the end
-            return p - offset, '.'.join(labels)
+            return p - offset, b'.'.join(labels)
         else:
             labels.append(data[p + 1:p + 1 + l])
             p += 1 + l
-        l = ord(data[p])
-    return p - offset + 1, '.'.join(labels)
+        l = common.ord(data[p])
+    return p - offset + 1, b'.'.join(labels)
 
 
 # rfc1035
@@ -199,20 +196,20 @@ def parse_response(data):
             qds = []
             ans = []
             offset = 12
-            for i in xrange(0, res_qdcount):
+            for i in range(0, res_qdcount):
                 l, r = parse_record(data, offset, True)
                 offset += l
                 if r:
                     qds.append(r)
-            for i in xrange(0, res_ancount):
+            for i in range(0, res_ancount):
                 l, r = parse_record(data, offset)
                 offset += l
                 if r:
                     ans.append(r)
-            for i in xrange(0, res_nscount):
+            for i in range(0, res_nscount):
                 l, r = parse_record(data, offset)
                 offset += l
-            for i in xrange(0, res_arcount):
+            for i in range(0, res_arcount):
                 l, r = parse_record(data, offset)
                 offset += l
             response = DNSResponse()
@@ -224,28 +221,16 @@ def parse_response(data):
                 response.answers.append((an[1], an[2], an[3]))
             return response
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        logging.error(e)
+        shell.print_exception(e)
         return None
-
-
-def is_ip(address):
-    for family in (socket.AF_INET, socket.AF_INET6):
-        try:
-            socket.inet_pton(family, address)
-            return family
-        except (TypeError, ValueError, OSError, IOError):
-            pass
-    return False
 
 
 def is_valid_hostname(hostname):
     if len(hostname) > 255:
         return False
-    if hostname[-1] == ".":
+    if hostname[-1] == b'.':
         hostname = hostname[:-1]
-    return all(VALID_HOSTNAME.match(x) for x in hostname.split("."))
+    return all(VALID_HOSTNAME.match(x) for x in hostname.split(b'.'))
 
 
 class DNSResponse(object):
@@ -266,7 +251,6 @@ class DNSResolver(object):
 
     def __init__(self):
         self._loop = None
-        self._request_id = 1
         self._hosts = {}
         self._hostname_status = {}
         self._hostname_to_cb = {}
@@ -288,11 +272,13 @@ class DNSResolver(object):
                 for line in content:
                     line = line.strip()
                     if line:
-                        if line.startswith('nameserver'):
+                        if line.startswith(b'nameserver'):
                             parts = line.split()
                             if len(parts) >= 2:
                                 server = parts[1]
-                                if is_ip(server) == socket.AF_INET:
+                                if common.is_ip(server) == socket.AF_INET:
+                                    if type(server) != str:
+                                        server = server.decode('utf8')
                                     self._servers.append(server)
         except IOError:
             pass
@@ -301,7 +287,7 @@ class DNSResolver(object):
 
     def _parse_hosts(self):
         etc_path = '/etc/hosts'
-        if os.environ.__contains__('WINDIR'):
+        if 'WINDIR' in os.environ:
             etc_path = os.environ['WINDIR'] + '/system32/drivers/etc/hosts'
         try:
             with open(etc_path, 'rb') as f:
@@ -310,15 +296,15 @@ class DNSResolver(object):
                     parts = line.split()
                     if len(parts) >= 2:
                         ip = parts[0]
-                        if is_ip(ip):
-                            for i in xrange(1, len(parts)):
+                        if common.is_ip(ip):
+                            for i in range(1, len(parts)):
                                 hostname = parts[i]
                                 if hostname:
                                     self._hosts[hostname] = ip
         except IOError:
             self._hosts['localhost'] = '127.0.0.1'
 
-    def add_to_loop(self, loop):
+    def add_to_loop(self, loop, ref=False):
         if self._loop:
             raise Exception('already add to loop')
         self._loop = loop
@@ -327,21 +313,21 @@ class DNSResolver(object):
                                    socket.SOL_UDP)
         self._sock.setblocking(False)
         loop.add(self._sock, eventloop.POLL_IN)
-        loop.add_handler(self.handle_events, ref=False)
+        loop.add_handler(self.handle_events, ref=ref)
 
     def _call_callback(self, hostname, ip, error=None):
         callbacks = self._hostname_to_cb.get(hostname, [])
         for callback in callbacks:
-            if self._cb_to_hostname.__contains__(callback):
+            if callback in self._cb_to_hostname:
                 del self._cb_to_hostname[callback]
             if ip or error:
                 callback((hostname, ip), error)
             else:
                 callback((hostname, None),
                          Exception('unknown hostname %s' % hostname))
-        if self._hostname_to_cb.__contains__(hostname):
+        if hostname in self._hostname_to_cb:
             del self._hostname_to_cb[hostname]
-        if self._hostname_status.__contains__(hostname):
+        if hostname in self._hostname_status:
             del self._hostname_status[hostname]
 
     def _handle_data(self, data):
@@ -402,29 +388,28 @@ class DNSResolver(object):
                 arr.remove(callback)
                 if not arr:
                     del self._hostname_to_cb[hostname]
-                    if self._hostname_status.__contains__(hostname):
+                    if hostname in self._hostname_status:
                         del self._hostname_status[hostname]
 
     def _send_req(self, hostname, qtype):
-        self._request_id += 1
-        if self._request_id > 32768:
-            self._request_id = 1
-        req = build_request(hostname, qtype, self._request_id)
+        req = build_request(hostname, qtype)
         for server in self._servers:
             logging.debug('resolving %s with type %d using server %s',
                           hostname, qtype, server)
             self._sock.sendto(req, (server, 53))
 
     def resolve(self, hostname, callback):
+        if type(hostname) != bytes:
+            hostname = hostname.encode('utf8')
         if not hostname:
             callback(None, Exception('empty hostname'))
-        elif is_ip(hostname):
+        elif common.is_ip(hostname):
             callback((hostname, hostname), None)
-        elif self._hosts.__contains__(hostname):
+        elif hostname in self._hosts:
             logging.debug('hit hosts: %s', hostname)
             ip = self._hosts[hostname]
             callback((hostname, ip), None)
-        elif self._cache.__contains__(hostname):
+        elif hostname in self._cache:
             logging.debug('hit cache: %s', hostname)
             ip = self._cache[hostname]
             callback((hostname, ip), None)
@@ -447,3 +432,52 @@ class DNSResolver(object):
         if self._sock:
             self._sock.close()
             self._sock = None
+
+
+def test():
+    dns_resolver = DNSResolver()
+    loop = eventloop.EventLoop()
+    dns_resolver.add_to_loop(loop, ref=True)
+
+    global counter
+    counter = 0
+
+    def make_callback():
+        global counter
+
+        def callback(result, error):
+            global counter
+            # TODO: what can we assert?
+            print(result, error)
+            counter += 1
+            if counter == 9:
+                loop.remove_handler(dns_resolver.handle_events)
+                dns_resolver.close()
+        a_callback = callback
+        return a_callback
+
+    assert(make_callback() != make_callback())
+
+    dns_resolver.resolve(b'google.com', make_callback())
+    dns_resolver.resolve('google.com', make_callback())
+    dns_resolver.resolve('example.com', make_callback())
+    dns_resolver.resolve('ipv6.google.com', make_callback())
+    dns_resolver.resolve('www.facebook.com', make_callback())
+    dns_resolver.resolve('ns2.google.com', make_callback())
+    dns_resolver.resolve('invalid.@!#$%^&$@.hostname', make_callback())
+    dns_resolver.resolve('toooooooooooooooooooooooooooooooooooooooooooooooooo'
+                         'ooooooooooooooooooooooooooooooooooooooooooooooooooo'
+                         'long.hostname', make_callback())
+    dns_resolver.resolve('toooooooooooooooooooooooooooooooooooooooooooooooooo'
+                         'ooooooooooooooooooooooooooooooooooooooooooooooooooo'
+                         'ooooooooooooooooooooooooooooooooooooooooooooooooooo'
+                         'ooooooooooooooooooooooooooooooooooooooooooooooooooo'
+                         'ooooooooooooooooooooooooooooooooooooooooooooooooooo'
+                         'ooooooooooooooooooooooooooooooooooooooooooooooooooo'
+                         'long.hostname', make_callback())
+
+    loop.run()
+
+
+if __name__ == '__main__':
+    test()
