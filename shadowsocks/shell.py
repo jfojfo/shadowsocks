@@ -84,7 +84,8 @@ def check_config(config, is_local):
         sys.exit(2)
 
     if not is_local and not config.get('password', None) \
-            and not config.get('port_password', None):
+            and not config.get('port_password', None) \
+            and not config.get('manager_address'):
         logging.error('password or port_password not specified')
         print_help(is_local)
         sys.exit(2)
@@ -92,7 +93,7 @@ def check_config(config, is_local):
     if 'local_port' in config:
         config['local_port'] = int(config['local_port'])
 
-    if 'server_port' in config and type(config['server_port']) != list:
+    if config.get('server_port', None) and type(config['server_port']) != list:
         config['server_port'] = int(config['server_port'])
 
     if config.get('local_address', '') in [b'0.0.0.0']:
@@ -136,7 +137,7 @@ def get_config(is_local):
     else:
         shortopts = 'hd:s:p:k:m:c:t:vq'
         longopts = ['help', 'fast-open', 'pid-file=', 'log-file=', 'workers=',
-                    'forbidden-ip=', 'user=', 'version']
+                    'forbidden-ip=', 'user=', 'manager-address=', 'version']
     try:
         config_path = find_config()
         optlist, args = getopt.getopt(sys.argv[1:], shortopts, longopts)
@@ -148,8 +149,7 @@ def get_config(is_local):
             logging.info('loading config from %s' % config_path)
             with open(config_path, 'rb') as f:
                 try:
-                    config = json.loads(f.read().decode('utf8'),
-                                        object_hook=_decode_dict)
+                    config = parse_json_in_str(f.read().decode('utf8'))
                 except ValueError as e:
                     logging.error('found an error in config.json: %s',
                                   e.message)
@@ -157,7 +157,6 @@ def get_config(is_local):
         else:
             config = {}
 
-        optlist, args = getopt.getopt(sys.argv[1:], shortopts, longopts)
         v_count = 0
         for key, value in optlist:
             if key == '-p':
@@ -182,6 +181,8 @@ def get_config(is_local):
                 config['fast_open'] = True
             elif key == '--workers':
                 config['workers'] = int(value)
+            elif key == '--manager-address':
+                config['manager_address'] = value
             elif key == '--user':
                 config['user'] = to_str(value)
             elif key == '--forbidden-ip':
@@ -222,7 +223,6 @@ def get_config(is_local):
     config['workers'] = config.get('workers', 1)
     config['pid-file'] = config.get('pid-file', '/var/run/shadowsocks.pid')
     config['log-file'] = config.get('log-file', '/var/log/shadowsocks.log')
-    config['workers'] = config.get('workers', 1)
     config['verbose'] = config.get('verbose', False)
     config['local_address'] = to_str(config.get('local_address', '127.0.0.1'))
     config['local_port'] = config.get('local_port', 1080)
@@ -241,7 +241,7 @@ def get_config(is_local):
         except Exception as e:
             logging.error(e)
             sys.exit(2)
-    config['server_port'] = config.get('server_port', 8388)
+    config['server_port'] = config.get('server_port', None)
 
     logging.getLogger('').handlers = []
     logging.addLevelName(VERBOSE_LEVEL, 'VERBOSE')
@@ -319,6 +319,7 @@ Proxy options:
   --fast-open            use TCP_FASTOPEN, requires Linux 3.7+
   --workers WORKERS      number of workers, available on Unix/Linux
   --forbidden-ip IPLIST  comma seperated IP list forbidden to connect
+  --manager-address ADDR optional server manager UDP address, see wiki
 
 General options:
   -h, --help             show this help message and exit
@@ -358,3 +359,8 @@ def _decode_dict(data):
             value = _decode_dict(value)
         rv[key] = value
     return rv
+
+
+def parse_json_in_str(data):
+    # parse json and convert everything from unicode to str
+    return json.loads(data, object_hook=_decode_dict)

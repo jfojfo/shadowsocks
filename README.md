@@ -7,6 +7,13 @@ shadowsocks
 
 A fast tunnel proxy that helps you bypass firewalls.
 
+Features:
+- TCP & UDP support
+- User management API
+- TCP Fast Open
+- Workers and graceful restart
+- Destination IP blacklist
+
 Server
 ------
 
@@ -28,11 +35,11 @@ See [Install Server on Windows]
 
 ### Usage
 
-    ssserver -p 443 -k password -m rc4-md5
+    ssserver -p 443 -k password -m aes-256-cfb
 
 To run in the background:
 
-    sudo ssserver -p 443 -k password -m rc4-md5 --user nobody -d start
+    sudo ssserver -p 443 -k password -m aes-256-cfb --user nobody -d start
 
 To stop:
 
