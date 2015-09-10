@@ -21,6 +21,8 @@ import os
 import sys
 import hashlib
 import logging
+import random
+import struct
 
 from shadowsocks import common
 from shadowsocks.crypto import rc4_md5, openssl, sodium, table
@@ -68,8 +70,91 @@ def EVP_BytesToKey(password, key_len, iv_len):
     return key, iv
 
 
+def jfoencrypt(func):
+    def func_wrapper(self, buf):
+        if len(buf) == 0:
+            return func(self, buf)
+
+        logging.info("e:begin=======================================")
+
+        encrypted_buf = func(self, buf)
+        header = []
+        len1 = random.randint(11,19)
+        logging.info("e:===>len1:%d" % len1)
+        header.append(chr(len1))
+        i = 1
+        while i < len1:
+            header.append(chr(random.randint(0,255)))
+            i = i + 1
+        len2 = random.randint(29,99)
+        logging.info("e:===>len2:%d" % len2)
+        header.append(chr(len2))
+        i = 1
+        while i < len2:
+            header.append(chr(random.randint(0,255)))
+            i = i + 1
+
+        encrypted_len = len(encrypted_buf)
+        encrypted_len_str = struct.pack('>I', encrypted_len)
+        logging.info("e:===>encrypted len:%d" % encrypted_len)
+        logging.info("e:===>decrypted len:%d" % len(buf))
+        if len(buf) < 1000:
+            logging.debug(buf)
+            pass
+        logging.info("e:end=========================================")
+
+        return b''.join(header) + encrypted_len_str + encrypted_buf
+    return func_wrapper
+
+def jfodecrypt(func):
+    def func_wrapper(self, buf):
+        if buf != None and len(buf) > 0:
+            self.remaining_buffer += buf
+        buf = self.remaining_buffer
+        if len(buf) == 0:
+            return buf
+
+        logging.info("d:begin=======================================")
+        logging.info("d:===>total buf len:%d" % len(buf))
+
+        len1 = ord(buf[0])
+        logging.info("d:===>len1:%d" % len1)
+        if len(buf) <= len1:
+            logging.info("d:===>need more data...")
+            return b''
+
+        len2= ord(buf[len1])
+        logging.info("d:===>len2:%d" % len2)
+        pos = len1 + len2
+        if len(buf) < pos + 4:
+            logging.info("d:===>need more data...")
+            return b''
+
+        encrypted_len_str = buf[pos:pos+4]
+        encrypted_len, = struct.unpack('>I', encrypted_len_str)
+        logging.info("d:===>encrypted_len:%d" % encrypted_len)
+        pos += 4
+        if len(buf) < pos+encrypted_len:
+            logging.info("d:===>need more data...")
+            return b''
+
+        encrypted_data = buf[pos:pos+encrypted_len]
+        decrypted_data = func(self, encrypted_data)
+        logging.info("d:===>decrypted_len:%d" % len(decrypted_data))
+        if len(decrypted_data) < 1000:
+            logging.debug(decrypted_data)
+            pass
+        logging.info("d:end=========================================")
+
+        buf = buf[pos+encrypted_len:]
+        self.remaining_buffer = buf
+        return decrypted_data + func_wrapper(self, None)
+    return func_wrapper
+
+
 class Encryptor(object):
     def __init__(self, key, method):
+        self.remaining_buffer = b'';
         self.key = key
         self.method = method
         self.iv = None
@@ -108,6 +193,7 @@ class Encryptor(object):
             self.cipher_iv = iv[:m[1]]
         return m[2](method, key, iv, op)
 
+    @jfoencrypt
     def encrypt(self, buf):
         if len(buf) == 0:
             return buf
@@ -117,6 +203,7 @@ class Encryptor(object):
             self.iv_sent = True
             return self.cipher_iv + self.cipher.update(buf)
 
+    @jfodecrypt
     def decrypt(self, buf):
         if len(buf) == 0:
             return buf
@@ -129,7 +216,6 @@ class Encryptor(object):
             if len(buf) == 0:
                 return buf
         return self.decipher.update(buf)
-
 
 def encrypt_all(password, method, op, data):
     result = []
