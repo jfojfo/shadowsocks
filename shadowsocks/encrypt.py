@@ -69,6 +69,20 @@ def EVP_BytesToKey(password, key_len, iv_len):
     cached_keys[cached_key] = (key, iv)
     return key, iv
 
+def jfomixup(data, key):
+    ret = []
+    i = 0
+    data_len = len(data)
+    j = 0
+    key_len = len(key)
+    while i < data_len:
+        byte = ord(data[i])
+        akey = ord(key[j])
+        newbyte = byte ^ akey
+        ret.append(chr(newbyte))
+        i += 1
+        j = (j + 1) % key_len
+    return b''.join(ret)
 
 def jfoencrypt(func):
     def func_wrapper(self, buf):
@@ -77,7 +91,6 @@ def jfoencrypt(func):
 
         logging.info("e:begin=======================================")
 
-        encrypted_buf = func(self, buf)
         header = []
         len1 = random.randint(11,19)
         logging.info("e:===>len1:%d" % len1)
@@ -94,6 +107,8 @@ def jfoencrypt(func):
             header.append(chr(random.randint(0,255)))
             i = i + 1
 
+        key = header[len1:len2]
+        encrypted_buf = jfomixup(buf, key)
         encrypted_len = len(encrypted_buf)
         encrypted_len_str = struct.pack('>I', encrypted_len)
         logging.info("e:===>encrypted len:%d" % encrypted_len)
@@ -138,8 +153,9 @@ def jfodecrypt(func):
             logging.info("d:===>need more data...")
             return b''
 
+        key = buf[len1:len2]
         encrypted_data = buf[pos:pos+encrypted_len]
-        decrypted_data = func(self, encrypted_data)
+        decrypted_data = jfomixup(encrypted_data, key)
         logging.info("d:===>decrypted_len:%d" % len(decrypted_data))
         if len(decrypted_data) < 1000:
             logging.debug(decrypted_data)
@@ -271,3 +287,4 @@ def test_encrypt_all():
 if __name__ == '__main__':
     test_encrypt_all()
     test_encryptor()
+
