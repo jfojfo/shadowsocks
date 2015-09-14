@@ -23,6 +23,7 @@ import hashlib
 import logging
 import random
 import struct
+import base64
 
 from shadowsocks import common
 from shadowsocks.crypto import rc4_md5, openssl, sodium, table
@@ -84,39 +85,45 @@ def jfomixup(data, key):
         j = (j + 1) % key_len
     return b''.join(ret)
 
+A = ord('A')
+Z = ord('Z')
+
 def jfoencrypt(func):
     def func_wrapper(self, buf):
         if len(buf) == 0:
             return func(self, buf)
 
-        logging.info("e:begin=======================================")
+        logging.debug("e:begin=======================================")
 
         header = []
         len1 = random.randint(11,19)
-        logging.info("e:===>len1:%d" % len1)
-        header.append(chr(len1))
+        logging.debug("e:===>len1:%d" % len1)
+        header.append(chr(len1 + A))
         i = 1
         while i < len1:
-            header.append(chr(random.randint(0,255)))
+            header.append(chr(random.randint(A,Z)))
             i = i + 1
-        len2 = random.randint(29,99)
-        logging.info("e:===>len2:%d" % len2)
-        header.append(chr(len2))
+        len2 = random.randint(11,25)
+        logging.debug("e:===>len2:%d" % len2)
+        header.append(chr(len2 + A))
         i = 1
         while i < len2:
-            header.append(chr(random.randint(0,255)))
+            header.append(chr(random.randint(A,Z)))
             i = i + 1
 
-        key = header[len1:len2]
+        key = header[len1:len1+len2]
         encrypted_buf = jfomixup(buf, key)
+        encrypted_buf = base64.b64encode(encrypted_buf)
         encrypted_len = len(encrypted_buf)
         encrypted_len_str = struct.pack('>I', encrypted_len)
-        logging.info("e:===>encrypted len:%d" % encrypted_len)
-        logging.info("e:===>decrypted len:%d" % len(buf))
+        encrypted_len_str = base64.b64encode(encrypted_len_str)
+        logging.debug("e:===>encrypted len:%d" % encrypted_len)
+        logging.debug("e:===>encrypted len str:%s" % encrypted_len_str)
+        logging.debug("e:===>decrypted len:%d" % len(buf))
         if len(buf) < 1000:
             logging.debug(buf)
             pass
-        logging.info("e:end=========================================")
+        logging.debug("e:end=========================================")
 
         return b''.join(header) + encrypted_len_str + encrypted_buf
     return func_wrapper
@@ -129,38 +136,40 @@ def jfodecrypt(func):
         if len(buf) == 0:
             return buf
 
-        logging.info("d:begin=======================================")
-        logging.info("d:===>total buf len:%d" % len(buf))
+        logging.debug("d:begin=======================================")
+        logging.debug("d:===>total buf len:%d" % len(buf))
 
-        len1 = ord(buf[0])
-        logging.info("d:===>len1:%d" % len1)
+        len1 = ord(buf[0]) - A
+        logging.debug("d:===>len1:%d" % len1)
         if len(buf) <= len1:
-            logging.info("d:===>need more data...")
+            logging.debug("d:===>need more data...")
             return b''
 
-        len2= ord(buf[len1])
-        logging.info("d:===>len2:%d" % len2)
+        len2= ord(buf[len1]) - A
+        logging.debug("d:===>len2:%d" % len2)
         pos = len1 + len2
         if len(buf) < pos + 4:
-            logging.info("d:===>need more data...")
+            logging.debug("d:===>need more data...")
             return b''
 
-        encrypted_len_str = buf[pos:pos+4]
+        encrypted_len_str = buf[pos:pos+8]
+        encrypted_len_str = base64.b64decode(encrypted_len_str)
         encrypted_len, = struct.unpack('>I', encrypted_len_str)
-        logging.info("d:===>encrypted_len:%d" % encrypted_len)
-        pos += 4
+        logging.debug("d:===>encrypted_len:%d" % encrypted_len)
+        pos += 8
         if len(buf) < pos+encrypted_len:
-            logging.info("d:===>need more data...")
+            logging.debug("d:===>need more data...")
             return b''
 
-        key = buf[len1:len2]
+        key = buf[len1:len1+len2]
         encrypted_data = buf[pos:pos+encrypted_len]
-        decrypted_data = jfomixup(encrypted_data, key)
-        logging.info("d:===>decrypted_len:%d" % len(decrypted_data))
+        decrypted_data = base64.b64decode(encrypted_data)
+        decrypted_data = jfomixup(decrypted_data, key)
+        logging.debug("d:===>decrypted_len:%d" % len(decrypted_data))
         if len(decrypted_data) < 1000:
             logging.debug(decrypted_data)
             pass
-        logging.info("d:end=========================================")
+        logging.debug("d:end=========================================")
 
         buf = buf[pos+encrypted_len:]
         self.remaining_buffer = buf

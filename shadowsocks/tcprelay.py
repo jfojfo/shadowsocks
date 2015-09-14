@@ -144,7 +144,7 @@ class TCPRelayHandler(object):
             server_port = random.choice(server_port)
         if type(server) == list:
             server = random.choice(server)
-        logging.debug('chosen server: %s:%d', server, server_port)
+        logging.debug('-------------------------------> chosen server: %s:%d', server, server_port)
         return server, server_port
 
     def _update_activity(self, data_len=0):
@@ -280,6 +280,7 @@ class TCPRelayHandler(object):
                     # just wait for the client to disconnect
                     return
                 elif cmd == CMD_CONNECT:
+                    logging.debug('proxy cmd connect')
                     # just trim VER CMD RSV
                     data = data[3:]
                 else:
@@ -450,6 +451,7 @@ class TCPRelayHandler(object):
 
     def _on_local_write(self):
         # handle local writable event
+        logging.debug('----->write data for %s:%d' % self._remote_address)
         if self._data_to_write_to_local:
             data = b''.join(self._data_to_write_to_local)
             self._data_to_write_to_local = []
