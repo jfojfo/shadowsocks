@@ -159,8 +159,6 @@ def jfodecrypt(func):
         except Exception as e:
             logging.error('%s' % e)
             logging.error(encrypted_len_str)
-            shell.print_exception(e)
-            raise e
         encrypted_len, = struct.unpack('>I', encrypted_len_str)
         logging.debug("d:===>encrypted_len:%d" % encrypted_len)
         pos += 8
@@ -175,8 +173,6 @@ def jfodecrypt(func):
         except Exception as e:
             logging.error('%s' % e)
             logging.error(encrypted_data)
-            shell.print_exception(e)
-            raise e
 
         #decrypted_data = jfomixup(decrypted_data, key)
         decrypted_data = func(self, decrypted_data)
