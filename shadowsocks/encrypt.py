@@ -112,7 +112,8 @@ def jfoencrypt(func):
             i = i + 1
 
         key = header[len1:len1+len2]
-        encrypted_buf = func(buf, key)
+        #encrypted_buf = jfomixup(buf, key)
+        encrypted_buf = func(self, buf)
         encrypted_buf = base64.b64encode(encrypted_buf)
         encrypted_len = len(encrypted_buf)
         encrypted_len_str = struct.pack('>I', encrypted_len)
@@ -177,7 +178,8 @@ def jfodecrypt(func):
             shell.print_exception(e)
             raise e
 
-        decrypted_data = func(decrypted_data, key)
+        #decrypted_data = jfomixup(decrypted_data, key)
+        decrypted_data = func(self, decrypted_data)
         logging.debug("d:===>decrypted_len:%d" % len(decrypted_data))
         if len(decrypted_data) < 1000:
             logging.debug(decrypted_data)
