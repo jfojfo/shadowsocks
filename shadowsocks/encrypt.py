@@ -149,11 +149,12 @@ def jfodecrypt(func):
         len2= ord(buf[len1]) - A
         logging.debug("d:===>len2:%d" % len2)
         pos = len1 + len2
-        if len(buf) < pos + 4:
+        SIZE_ENCRYPTED_LEN = 8
+        if len(buf) < pos + SIZE_ENCRYPTED_LEN:
             logging.debug("d:===>need more data...")
             return b''
 
-        encrypted_len_str = buf[pos:pos+8]
+        encrypted_len_str = buf[pos:pos+SIZE_ENCRYPTED_LEN]
         try:
             encrypted_len_str = base64.b64decode(encrypted_len_str)
         except Exception as e:
@@ -161,7 +162,7 @@ def jfodecrypt(func):
             logging.error(encrypted_len_str)
         encrypted_len, = struct.unpack('>I', encrypted_len_str)
         logging.debug("d:===>encrypted_len:%d" % encrypted_len)
-        pos += 8
+        pos += SIZE_ENCRYPTED_LEN
         if len(buf) < pos+encrypted_len:
             logging.debug("d:===>need more data...")
             return b''
