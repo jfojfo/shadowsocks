@@ -112,7 +112,7 @@ def jfoencrypt(func):
             i = i + 1
 
         key = header[len1:len1+len2]
-        encrypted_buf = jfomixup(buf, key)
+        encrypted_buf = func(buf, key)
         encrypted_buf = base64.b64encode(encrypted_buf)
         encrypted_len = len(encrypted_buf)
         encrypted_len_str = struct.pack('>I', encrypted_len)
@@ -153,7 +153,13 @@ def jfodecrypt(func):
             return b''
 
         encrypted_len_str = buf[pos:pos+8]
-        encrypted_len_str = base64.b64decode(encrypted_len_str)
+        try:
+            encrypted_len_str = base64.b64decode(encrypted_len_str)
+        except Exception as e:
+            logging.error('%s' % e)
+            logging.error(encrypted_len_str)
+            shell.print_exception(e)
+            raise e
         encrypted_len, = struct.unpack('>I', encrypted_len_str)
         logging.debug("d:===>encrypted_len:%d" % encrypted_len)
         pos += 8
@@ -163,8 +169,15 @@ def jfodecrypt(func):
 
         key = buf[len1:len1+len2]
         encrypted_data = buf[pos:pos+encrypted_len]
-        decrypted_data = base64.b64decode(encrypted_data)
-        decrypted_data = jfomixup(decrypted_data, key)
+        try:
+            decrypted_data = base64.b64decode(encrypted_data)
+        except Exception as e:
+            logging.error('%s' % e)
+            logging.error(encrypted_data)
+            shell.print_exception(e)
+            raise e
+
+        decrypted_data = func(decrypted_data, key)
         logging.debug("d:===>decrypted_len:%d" % len(decrypted_data))
         if len(decrypted_data) < 1000:
             logging.debug(decrypted_data)
