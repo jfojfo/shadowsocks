@@ -407,6 +407,7 @@ class TCPRelayHandler(object):
             if not data:
                 return
         if self._stage == STAGE_STREAM:
+            logging.debug('-------------------------->send data to %s:%d' % self._remote_address)
             if self._is_local:
                 data = self._encryptor.encrypt(data)
             self._write_to_sock(data, self._remote_sock)
@@ -436,6 +437,7 @@ class TCPRelayHandler(object):
             self.destroy()
             return
         self._update_activity(len(data))
+        logging.debug('-------------------------->recv data from %s:%d' % self._remote_address)
         if self._is_local:
             data = self._encryptor.decrypt(data)
         else:
@@ -451,7 +453,6 @@ class TCPRelayHandler(object):
 
     def _on_local_write(self):
         # handle local writable event
-        logging.debug('----->write data for %s:%d' % self._remote_address)
         if self._data_to_write_to_local:
             data = b''.join(self._data_to_write_to_local)
             self._data_to_write_to_local = []
@@ -461,6 +462,7 @@ class TCPRelayHandler(object):
 
     def _on_remote_write(self):
         # handle remote writable event
+        logging.debug('--------->_on_remote_write:send data to %s:%d' % self._remote_address)
         self._stage = STAGE_STREAM
         if self._data_to_write_to_remote:
             data = b''.join(self._data_to_write_to_remote)

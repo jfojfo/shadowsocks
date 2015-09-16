@@ -27,6 +27,7 @@ import base64
 
 from shadowsocks import common
 from shadowsocks.crypto import rc4_md5, openssl, sodium, table
+from shadowsocks.shell import VERBOSE_LEVEL
 
 
 method_supported = {}
@@ -122,7 +123,7 @@ def jfoencrypt(func):
         logging.debug("e:===>encrypted len str:%s" % encrypted_len_str)
         logging.debug("e:===>decrypted len:%d" % len(buf))
         if len(buf) < 1000:
-            logging.debug(buf)
+            logging.log(VERBOSE_LEVEL, buf)
             pass
         logging.debug("e:end=========================================")
 
@@ -179,7 +180,7 @@ def jfodecrypt(func):
         decrypted_data = func(self, decrypted_data)
         logging.debug("d:===>decrypted_len:%d" % len(decrypted_data))
         if len(decrypted_data) < 1000:
-            logging.debug(decrypted_data)
+            logging.log(VERBOSE_LEVEL, decrypted_data)
             pass
         logging.debug("d:end=========================================")
 
