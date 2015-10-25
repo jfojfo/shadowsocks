@@ -25,6 +25,7 @@ import struct
 import logging
 import traceback
 import random
+import binascii
 
 from shadowsocks import encrypt, eventloop, shell, common
 from shadowsocks.common import parse_header
@@ -418,7 +419,8 @@ class TCPRelayHandler(object):
             return
         elif is_local and self._stage == STAGE_INIT:
             # TODO check auth method
-            self._write_to_sock(b'\x05\00', self._local_sock)
+            logging.debug(binascii.hexlify(data))
+            self._write_to_sock(b'\x05\02', self._local_sock)
             self._stage = STAGE_ADDR
             return
         elif self._stage == STAGE_CONNECTING:
