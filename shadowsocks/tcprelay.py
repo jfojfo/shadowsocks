@@ -295,6 +295,10 @@ class TCPRelayHandler(object):
                          (common.to_str(remote_addr), remote_port,
                           self._client_address[0], self._client_address[1]))
             self._remote_address = (common.to_str(remote_addr), remote_port)
+
+            if common.to_str(remote_addr) in self._config['forbidden_addr']:
+                raise Exception('addr %s is in forbidden list, reject' % common.to_str(remote_addr))
+
             # pause reading
             self._update_stream(STREAM_UP, WAIT_STATUS_WRITING)
             self._stage = STAGE_DNS

@@ -243,6 +243,9 @@ def get_config(is_local):
             sys.exit(2)
     config['server_port'] = config.get('server_port', None)
 
+    config['forbidden_addr'] = [x.strip() for x in config.get('forbidden_addr', '').split(',') if x.strip()]
+    logging.info("====forbidden_addr:" + str(config['forbidden_addr']))
+
     logging.getLogger('').handlers = []
     logging.addLevelName(VERBOSE_LEVEL, 'VERBOSE')
     if config['verbose'] >= 2:
