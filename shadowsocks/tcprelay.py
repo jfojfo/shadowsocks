@@ -420,7 +420,7 @@ class TCPRelayHandler(object):
         elif is_local and self._stage == STAGE_INIT:
             # TODO check auth method
             logging.debug(binascii.hexlify(data))
-            self._write_to_sock(b'\x05\02', self._local_sock)
+            self._write_to_sock(b'\x05\00', self._local_sock)
             self._stage = STAGE_ADDR
             return
         elif self._stage == STAGE_CONNECTING:
