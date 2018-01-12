@@ -192,7 +192,7 @@ def jfodecrypt(func):
 
 class Encryptor(object):
     def __init__(self, key, method):
-        self.remaining_buffer = b'';
+        self.remaining_buffer = b''
         self.key = key
         self.method = method
         self.iv = None

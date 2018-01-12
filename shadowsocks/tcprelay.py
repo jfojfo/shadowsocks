@@ -408,9 +408,12 @@ class TCPRelayHandler(object):
             return
         self._update_activity(len(data))
         if not is_local:
-            data = self._encryptor.decrypt(data)
-            if not data:
-                return
+            try:
+                data = self._encryptor.decrypt(data)
+                if not data:
+                    return
+            except:
+                self.destroy()
         if self._stage == STAGE_STREAM:
             logging.debug('-------------------------->send data to %s:%d' % self._remote_address)
             if self._is_local:
